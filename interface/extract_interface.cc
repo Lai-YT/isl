@@ -1,18 +1,18 @@
 /*
  * Copyright 2011 Sven Verdoolaege. All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- * 
+ *
  *    1. Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    2. Redistributions in binary form must reproduce the above
  *       copyright notice, this list of conditions and the following
  *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY SVEN VERDOOLAEGE ''AS IS'' AND ANY
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -24,15 +24,17 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- * 
+ *
  * The views and conclusions contained in the software and documentation
  * are those of the authors and should not be interpreted as
  * representing official policies, either expressed or implied, of
  * Sven Verdoolaege.
- */ 
+ */
+#define HandleTopLevelDeclReturn bool
+#define HandleTopLevelDeclContinue true
 
 #include "isl_config.h"
-
+#define HAVE_BASIC_DIAGNOSTICOPTIONS_H
 #include <assert.h>
 #include <iostream>
 #ifdef HAVE_ADT_OWNINGPTR_H
@@ -67,10 +69,9 @@
 #include <clang/Lex/Preprocessor.h>
 #include <clang/Parse/ParseAST.h>
 #include <clang/Sema/Sema.h>
-
+#include <clang/Lex/PreprocessorOptions.h>
 #include "extract_interface.h"
 #include "python.h"
-
 using namespace std;
 using namespace clang;
 using namespace clang::driver;
@@ -241,7 +242,7 @@ static TextDiagnosticPrinter *construct_printer(void)
 }
 
 #endif
-
+#define CREATETARGETINFO_TAKES_SHARED_PTR
 #ifdef CREATETARGETINFO_TAKES_SHARED_PTR
 
 static TargetInfo *create_target_info(CompilerInstance *Clang,
@@ -289,7 +290,7 @@ static void create_diagnostics(CompilerInstance *Clang)
 }
 
 #endif
-
+#define CREATEPREPROCESSOR_TAKES_TUKIND
 #ifdef CREATEPREPROCESSOR_TAKES_TUKIND
 
 static void create_preprocessor(CompilerInstance *Clang)
@@ -305,7 +306,7 @@ static void create_preprocessor(CompilerInstance *Clang)
 }
 
 #endif
-
+#define ADDPATH_TAKES_4_ARGUMENTS
 #ifdef ADDPATH_TAKES_4_ARGUMENTS
 
 void add_path(HeaderSearchOptions &HSO, string Path)
@@ -321,7 +322,7 @@ void add_path(HeaderSearchOptions &HSO, string Path)
 }
 
 #endif
-
+#define HAVE_SETMAINFILEID
 #ifdef HAVE_SETMAINFILEID
 
 static void create_main_file_id(SourceManager &SM, const FileEntry *file)
@@ -350,16 +351,23 @@ int main(int argc, char *argv[])
 	CompilerInvocation *invocation =
 		construct_invocation(InputFilename.c_str(), Diags);
 	if (invocation)
-		Clang->setInvocation(invocation);
+	{
+		Clang->setInvocation(std::make_shared<CompilerInvocation>(*invocation));
+		//Clang->setInvocation(tempme);
+	}
 	Clang->createFileManager();
 	Clang->createSourceManager(Clang->getFileManager());
+	PreprocessorOptions &PO = Clang->getPreprocessorOpts();
 	TargetInfo *target = create_target_info(Clang, Diags);
 	Clang->setTarget(target);
-	CompilerInvocation::setLangDefaults(Clang->getLangOpts(), IK_C,
+	TargetOptions TO;
+	llvm::Triple T(TO.Triple);
+	CompilerInvocation::setLangDefaults(Clang->getLangOpts(), InputKind(InputKind::Language::C), T, PO,
 					    LangStandard::lang_unspecified);
+
 	HeaderSearchOptions &HSO = Clang->getHeaderSearchOpts();
 	LangOptions &LO = Clang->getLangOpts();
-	PreprocessorOptions &PO = Clang->getPreprocessorOpts();
+
 	HSO.ResourceDir = ResourceDir;
 
 	for (llvm::cl::list<string>::size_type i = 0; i < Includes.size(); ++i)

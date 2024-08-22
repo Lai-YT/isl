@@ -164,6 +164,23 @@ int isl_id_cmp(__isl_keep isl_id *id1, __isl_keep isl_id *id2)
 		return 1;
 }
 
+isl_bool isl_id_compare(__isl_keep isl_id *id1, __isl_keep isl_id *id2)
+{
+	if (id1 == id2)
+		return isl_bool_true;
+	if (!id1)
+		return isl_bool_false;
+	if (!id2)
+		return isl_bool_false;
+	if (id1->name) 
+	{
+		int cmp = strcmp(id1->name, id2->name);
+		if (cmp == 0)
+			return isl_bool_true;
+	}
+	return isl_bool_false;
+}
+
 static int isl_id_eq(const void *entry, const void *name)
 {
 	return entry == name;

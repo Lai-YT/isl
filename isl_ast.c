@@ -8,9 +8,10 @@
  */
 
 #include <string.h>
+#include <stdbool.h>
 
 #include <isl_ast_private.h>
-
+#include <isl/constraint.h>
 #undef BASE
 #define BASE ast_expr
 
@@ -20,6 +21,236 @@
 #define BASE ast_node
 
 #include <isl_list_templ.c>
+
+__isl_give isl_ast_expr *isl_ast_expr_dup(__isl_keep isl_ast_expr *expr);
+isl_bool isl_id_compare(__isl_keep isl_id *id1, __isl_keep isl_id *id2);
+isl_stat isl_ast_node_foreach_descendant_top_down_analysis(
+	__isl_keep isl_ast_node *node,
+	isl_bool (*fn)(__isl_keep isl_ast_node *node, void *user), void *user);
+
+
+void alter_access(__isl_keep isl_ast_expr *expr, char * name)
+{
+	int i;
+	for (i = 0; i < expr->u.op.n_arg ; i++)
+	{
+		isl_ast_expr_free(expr->u.op.args[i]);
+	}
+	isl_ctx * ctx = isl_ast_expr_get_ctx(expr);
+	isl_id * id = isl_id_alloc(ctx,name,NULL);
+	expr->type=isl_ast_expr_id;
+	expr->u.id = id;
+}
+
+void isl_ast_expr_modify_access_to_tex_call(__isl_keep isl_ast_expr * ast_expr,bool is_linearize)
+{
+	isl_ctx * ctx = isl_ast_expr_get_ctx(ast_expr);
+	isl_ast_expr **args = isl_calloc_array(ctx, isl_ast_expr *,ast_expr->u.op.n_arg + 1);
+
+	int j=0;
+	int tex_dim = isl_ast_expr_get_op_n_arg(ast_expr)-1;
+	char fname[11];
+	char d = tex_dim+'0';
+	strcpy(fname, "tex");
+	fname[3]=d;
+	fname[4]='D';
+	fname[5]='\0';
+	if(is_linearize)
+	{
+		strcat(fname, "fetch");
+	}
+	isl_id * arg0_id = isl_id_alloc(ctx,fname,NULL);
+	args[j]=isl_ast_expr_from_id(arg0_id);
+	j++;
+
+	const char  * tmp =isl_id_get_name(ast_expr->u.op.args[0]->u.id);
+	char * prefix="texRef_";
+	char * arg2_char = (char *)malloc(sizeof(char)*(strlen(tmp)+strlen(prefix)));
+	strcpy(arg2_char,prefix);
+	strcat(arg2_char,tmp);
+
+	isl_id * arg2_id = isl_id_alloc(ctx,arg2_char,NULL);
+	args[j]=isl_ast_expr_from_id(arg2_id);
+	j++;
+	int i;
+	for (i = tex_dim; i >0 ; i--)
+	{
+		args[j]=isl_ast_expr_dup(ast_expr->u.op.args[i]);
+		j++;
+	}
+	for (i = 0; i < isl_ast_expr_get_op_n_arg(ast_expr) ; i++)
+	{
+		isl_ast_expr_free(ast_expr->u.op.args[i]);
+	}
+	ast_expr->u.op.op= isl_ast_op_call;
+	ast_expr->u.op.n_arg = ast_expr->u.op.n_arg + 1;
+	ast_expr->u.op.args = args;
+	free(arg2_char);
+	printf("done constructed texture expr");
+	fflush(stdout);
+	/*isl_printer * new_var_name;
+		//isl_ctx * ctx;
+		//ctx =  isl_ast_expr_get_ctx(ast_expr);
+		new_var_name = isl_printer_to_str(ctx);
+		new_var_name=isl_printer_print_ast_expr(new_var_name,ast_expr);
+		char * dt = isl_printer_get_str(new_var_name);
+		printf("\n\n---------CHECK-------");
+		printf("  %s ",dt);
+		fflush(stdout);
+		isl_printer_free(new_var_name);*/
+}
+
+
+__isl_give isl_ast_expr* construct_surface_read_access(__isl_keep isl_ast_expr * array_access,char * type, char *temp)
+{
+	/*int i;
+	int j=0;
+	int surf_dim = isl_ast_expr_get_op_n_arg(array_access)-1;
+	isl_ctx * ctx = isl_ast_expr_get_ctx(array_access);
+	isl_ast_expr * surface_read = isl_ast_expr_alloc_op(ctx,isl_ast_op_call,surf_dim+3);
+
+	char fname[20];
+	snprintf(fname, sizeof(fname), "surf%dRead",surf_dim);
+	isl_id * arg0_id = isl_id_alloc(ctx,fname,NULL);
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg0_id));
+	j++;
+
+	printf("done fname");
+
+	char arg1_char[strlen(temp)+20];
+	snprintf(arg1_char, sizeof(arg1_char), "&%s",temp);
+
+	isl_id * arg1_id = isl_id_alloc(ctx,arg1_char,NULL);
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg1_id));
+	j++;
+
+		printf("done arg1_char");
+	printf("%s \n ",arg1_char);
+	fflush(stdout);
+
+
+	const char  * tmp =isl_id_get_name(array_access->u.op.args[0]->u.id);
+	printf("%s ",tmp);
+	if(!tmp)
+	{
+		exit(1);
+	}
+	char * prefix="surfRef_";
+	int temp_len = (strlen(prefix)+strlen(tmp)+2);
+	char arg2_char[temp_len+20];
+	snprintf(arg2_char, sizeof(arg2_char), "%s%s",prefix,tmp);
+	printf("%s \n ",arg2_char);
+	isl_id * arg2_id = isl_id_alloc(ctx,arg2_char,NULL); //isl_id_alloc(isl_ast_expr_get_ctx(array_access),"surfRef_test",NULL);
+
+
+
+	fflush(stdout);
+
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg2_id));
+	j++;
+
+
+
+	isl_ast_expr * sizeof_type = isl_ast_expr_alloc_op(ctx,isl_ast_op_call,2);
+	isl_ast_expr_set_op_arg(sizeof_type,0,isl_ast_expr_from_id(isl_id_alloc(ctx,"sizeof",NULL)));
+	isl_ast_expr_set_op_arg(sizeof_type,1,isl_ast_expr_from_id(isl_id_alloc(ctx,type,NULL)));
+
+
+	isl_ast_expr * arg3 = isl_ast_expr_alloc_op(ctx,isl_ast_op_mul,2);
+	isl_ast_expr_set_op_arg(arg3,0,isl_ast_expr_dup(array_access->u.op.args[surf_dim]));
+	isl_ast_expr_set_op_arg(arg3,1,sizeof_type);
+	isl_ast_expr_set_op_arg(surface_read,j,arg3);
+	j++;
+
+	for (i = surf_dim-1; i >0 ; i--)
+	{
+		isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_dup(array_access->u.op.args[i]));
+		j++;
+	}
+
+	//free(arg2_char);
+	free(arg1_char);
+	return surface_read;*/
+	int i;
+	int j=0;
+	int surf_dim = isl_ast_expr_get_op_n_arg(array_access)-1;
+	isl_ctx * ctx = isl_ast_expr_get_ctx(array_access);
+	isl_ast_expr * surface_read = isl_ast_expr_alloc_op(ctx,isl_ast_op_call,surf_dim+3);
+
+	char fname[11];
+	char d = surf_dim+'0';
+	strcpy(fname, "surf");
+	fname[4]=d;
+	fname[5]='\0';
+	strcat(fname, "Dread");
+
+	isl_id * arg0_id = isl_id_alloc(ctx,fname,NULL);
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg0_id));
+	j++;
+
+
+	char * arg1_char = (char *)malloc(sizeof(char)*(strlen(temp)+2));
+	strcpy(arg1_char,"&");
+	strcat(arg1_char,temp);
+	isl_id * arg1_id = isl_id_alloc(ctx,arg1_char,NULL);
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg1_id));
+	j++;
+
+	const char  * tmp =isl_id_get_name(array_access->u.op.args[0]->u.id);
+	char * prefix="surfRef_";
+	char * arg2_char = (char *)malloc(sizeof(char)*(strlen(tmp)+strlen(prefix)+2));
+	strcpy(arg2_char,prefix);
+	strcat(arg2_char,tmp);
+
+	isl_id * arg2_id = isl_id_alloc(ctx,arg2_char,NULL);
+	isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_from_id(arg2_id));
+	j++;
+
+	isl_ast_expr * sizeof_type = isl_ast_expr_alloc_op(ctx,isl_ast_op_call,2);
+	isl_ast_expr_set_op_arg(sizeof_type,0,isl_ast_expr_from_id(isl_id_alloc(ctx,"sizeof",NULL)));
+	isl_ast_expr_set_op_arg(sizeof_type,1,isl_ast_expr_from_id(isl_id_alloc(ctx,type,NULL)));
+
+
+	isl_ast_expr * arg3 = isl_ast_expr_alloc_op(ctx,isl_ast_op_mul,2);
+	isl_ast_expr_set_op_arg(arg3,0,isl_ast_expr_dup(array_access->u.op.args[surf_dim]));
+	isl_ast_expr_set_op_arg(arg3,1,sizeof_type);
+	isl_ast_expr_set_op_arg(surface_read,j,arg3);
+	j++;
+
+	for (i = surf_dim-1; i >0 ; i--)
+	{
+		isl_ast_expr_set_op_arg(surface_read,j,isl_ast_expr_dup(array_access->u.op.args[i]));
+		j++;
+	}
+
+	/*
+		for (i = surf_dim; i >0 ; i--)
+		{
+			p = isl_printer_print_str(p, ", ");
+			p = isl_printer_print_str(p, "(");
+			p = isl_printer_print_ast_expr(p, expr->u.op.args[i]);
+			p = isl_printer_print_str(p, ")");
+			if(i==surf_dim)
+			{
+				p = isl_printer_print_str(p, "* sizeof(");
+				p = isl_printer_print_str(p, type);
+				p = isl_printer_print_str(p, ")");
+			}
+		}
+		p = isl_printer_print_str(p, ")");
+	*/
+
+	return surface_read;
+
+
+}
+
+
+const char * extract_array_name_from_access(__isl_keep isl_ast_expr *expr)
+{
+	// TODO : Remove redundent functions like this
+	return isl_id_get_name(expr->u.op.args[0]->u.id);
+}
 
 isl_ctx *isl_ast_print_options_get_ctx(
 	__isl_keep isl_ast_print_options *options)
@@ -352,6 +583,45 @@ isl_bool isl_ast_expr_is_equal(__isl_keep isl_ast_expr *expr1,
 		for (i = 0; i < expr1->u.op.n_arg; ++i) {
 			isl_bool equal;
 			equal = isl_ast_expr_is_equal(expr1->u.op.args[i],
+							expr2->u.op.args[i]);
+			if (equal < 0 || !equal)
+				return equal;
+		}
+		return 1;
+	case isl_ast_expr_error:
+		return isl_bool_error;
+	}
+
+	isl_die(isl_ast_expr_get_ctx(expr1), isl_error_internal,
+		"unhandled case", return isl_bool_error);
+}
+
+
+isl_bool isl_ast_expr_trees_compare(__isl_keep isl_ast_expr *expr1,
+	__isl_keep isl_ast_expr *expr2)
+{
+	int i;
+
+	if (!expr1 || !expr2)
+		return isl_bool_error;
+
+	if (expr1 == expr2)
+		return isl_bool_true;
+	if (expr1->type != expr2->type)
+		return isl_bool_false;
+	switch (expr1->type) {
+	case isl_ast_expr_int:
+		return isl_val_eq(expr1->u.v, expr2->u.v);
+	case isl_ast_expr_id:
+		return isl_id_compare(expr1->u.id,expr2->u.id);
+	case isl_ast_expr_op:
+		if (expr1->u.op.op != expr2->u.op.op)
+			return isl_bool_false;
+		if (expr1->u.op.n_arg != expr2->u.op.n_arg)
+			return isl_bool_false;
+		for (i = 0; i < expr1->u.op.n_arg; ++i) {
+			isl_bool equal;
+			equal = isl_ast_expr_trees_compare(expr1->u.op.args[i],
 							expr2->u.op.args[i]);
 			if (equal < 0 || !equal)
 				return equal;
@@ -1348,6 +1618,27 @@ static isl_stat nodelist_foreach(__isl_keep isl_ast_node_list *list,
 	return isl_stat_ok;
 }
 
+static isl_stat nodelist_foreach_analysis(__isl_keep isl_ast_node_list *list,
+	isl_bool (*fn)(__isl_keep isl_ast_node *node, void *user), void *user)
+{
+	int i;
+
+	if (!list)
+		return isl_stat_error;
+
+	for (i = 0; i < list->n; ++i) {
+		isl_stat ok;
+		isl_ast_node *node = list->p[i];
+
+		ok = isl_ast_node_foreach_descendant_top_down_analysis(node, fn, user);
+		if (ok < 0)
+			return isl_stat_error;
+	}
+
+	return isl_stat_ok;
+}
+
+
 /* Traverse the descendants of "node" (including the node itself)
  * in depth first preorder.
  *
@@ -1400,6 +1691,89 @@ isl_stat isl_ast_node_foreach_descendant_top_down(
 
 	return isl_stat_ok;
 }
+
+struct kernel_analysis
+{
+	struct candidate_info * analysis_tableu;
+	int visited_kernel_cnt;
+	int candidates_cnt;
+	int kernel_cnt;
+	bool is_annotating;
+	struct surf_read_expressions * read_surface_to_temp;
+	int temp_cnt;
+	int kernel_loop_depth_count;
+};
+
+
+struct surf_read_expressions
+{
+	char * temp_name;
+	char * type;
+	isl_ast_expr * access_expr;
+	isl_ast_expr * surface_read_expr;
+	struct surf_read_expressions * next;
+};
+
+isl_stat isl_ast_node_foreach_descendant_top_down_analysis(
+	__isl_keep isl_ast_node *node,
+	isl_bool (*fn)(__isl_keep isl_ast_node *node, void *user), void *user)
+{
+	isl_bool more;
+	isl_stat ok;
+	struct kernel_analysis * arg;
+	if (!node)
+		return isl_stat_error;
+
+	more = fn(node, user);
+	if (more < 0)
+		return isl_stat_error;
+	if (!more)
+		return isl_stat_ok;
+
+	switch (node->type) {
+	case isl_ast_node_for:
+		{
+		arg = (struct kernel_analysis *) user;
+		if(!arg->is_annotating)
+			arg->kernel_loop_depth_count++;
+		printf("\n LLL Entering Loop");
+		node = node->u.f.body;
+		isl_stat rtn= isl_ast_node_foreach_descendant_top_down_analysis(node, fn, user);
+		if(!arg->is_annotating)
+			arg->kernel_loop_depth_count--;
+		// TODO :  clearing needed
+		return rtn;
+		}
+	case isl_ast_node_if:
+		ok = isl_ast_node_foreach_descendant_top_down_analysis(node->u.i.then,
+								fn, user);
+		if (ok < 0)
+			return isl_stat_error;
+		if (!node->u.i.else_node)
+			return isl_stat_ok;
+		node = node->u.i.else_node;
+		return isl_ast_node_foreach_descendant_top_down_analysis(node, fn, user);
+	case isl_ast_node_block:
+		return nodelist_foreach_analysis(node->u.b.children, fn, user);
+	case isl_ast_node_mark:
+		node = node->u.m.node;
+		return isl_ast_node_foreach_descendant_top_down_analysis(node, fn, user);
+	case isl_ast_node_user:
+		break;
+	case isl_ast_node_error:
+		return isl_stat_error;
+	}
+
+	return isl_stat_ok;
+}
+
+
+
+
+
+
+
+
 
 /* Textual C representation of the various operators.
  */
@@ -1773,14 +2147,12 @@ static __isl_give isl_printer *print_access(__isl_take isl_printer *p,
 	__isl_keep isl_ast_expr *expr)
 {
 	int i = 0;
-
-	p = isl_printer_print_ast_expr(p, expr->u.op.args[0]);
-	for (i = 1; i < expr->u.op.n_arg; ++i) {
-		p = isl_printer_print_str(p, "[");
-		p = isl_printer_print_ast_expr(p, expr->u.op.args[i]);
-		p = isl_printer_print_str(p, "]");
-	}
-
+		p = isl_printer_print_ast_expr(p, expr->u.op.args[0]);
+		for (i = 1; i < expr->u.op.n_arg; ++i) {
+			p = isl_printer_print_str(p, "[");
+			p = isl_printer_print_ast_expr(p, expr->u.op.args[i]);
+			p = isl_printer_print_str(p, "]");
+		}
 	return p;
 }
 
@@ -2578,4 +2950,95 @@ __isl_give isl_printer *isl_ast_node_print_macros(
 					    &ast_op_type_print_macro, &p) < 0)
 		return isl_printer_free(p);
 	return p;
+}
+const char* get_name(isl_ast_expr *ast_expr)
+{
+	// TODO Redundent functions here.
+	if(ast_expr->type != isl_ast_expr_op)
+		return NULL;
+	if(ast_expr->u.op.op != isl_ast_op_access)
+		return NULL;
+
+	return isl_id_get_name(ast_expr->u.op.args[0]->u.id);
+}
+
+
+ __isl_give isl_printer * print_texture_access(__isl_take isl_printer *p,isl_ast_expr *expr)
+{
+		int i;
+		// TODO : Move this to texture.c file
+
+		int tex_dim = expr->u.op.n_arg-1;
+		p = isl_printer_print_str(p, "tex");
+		p = isl_printer_print_int(p,tex_dim);
+		p = isl_printer_print_str(p, "D(");
+		p = isl_printer_print_str(p, "texRef_");
+		p = isl_printer_print_ast_expr(p, expr->u.op.args[0]);
+
+		for (i = tex_dim; i >0 ; i--) {
+			p = isl_printer_print_str(p, ", ");
+			p = isl_printer_print_str(p, " (");
+			p = isl_printer_print_ast_expr(p, expr->u.op.args[i]);
+			p = isl_printer_print_str(p, ") ");
+		}
+		p = isl_printer_print_str(p, ")");
+		return p;
+}
+/* __isl_give isl_printer * print_surface_read_access(__isl_take isl_printer *p,isl_ast_expr *expr, char *dest, char * type)
+{
+		int i;
+		// TODO : Move this to texture.c file
+		int surf_dim = expr->u.op.n_arg-1;
+		p = isl_printer_start_line(p);
+		p = isl_printer_print_str(p, "surf");
+		p = isl_printer_print_int(p,surf_dim);
+		p = isl_printer_print_str(p, "Dread(");
+		p = isl_printer_print_str(p, "&");
+		p = isl_printer_print_str(p, dest);
+		p = isl_printer_print_str(p, ", surfRef_");
+		p = isl_printer_print_ast_expr(p, expr->u.op.args[0]);
+		for (i = surf_dim; i >0 ; i--)
+		{
+			p = isl_printer_print_str(p, ", ");
+			p = isl_printer_print_str(p, "(");
+			p = isl_printer_print_ast_expr(p, expr->u.op.args[i]);
+			p = isl_printer_print_str(p, ")");
+			if(i==surf_dim)
+			{
+				p = isl_printer_print_str(p, "* sizeof(");
+				p = isl_printer_print_str(p, type);
+				p = isl_printer_print_str(p, ")");
+			}
+		}
+		p = isl_printer_print_str(p, ")");
+		p = isl_printer_print_str(p,";");
+		p = isl_printer_end_line(p);
+		return p;
+}*/
+ __isl_give isl_printer * print_surface_write_call(__isl_take isl_printer *p, int temp_id, char * type,int surf_dim,__isl_keep isl_ast_expr *expr_destination)
+{
+		// TODO : Move this to texture.c file
+		int i;
+		p = isl_printer_print_str(p, "surf");
+		p = isl_printer_print_int(p,surf_dim);
+		p = isl_printer_print_str(p, "Dwrite(");
+		p = isl_printer_print_str(p, "surf_write_temp_");
+		p = isl_printer_print_int(p, temp_id);
+		p = isl_printer_print_str(p, ", ");
+		p = isl_printer_print_str(p, "surfRef_");
+		p = isl_printer_print_ast_expr(p, expr_destination->u.op.args[0]);
+		for (i = surf_dim; i > 0; i--) {
+			p = isl_printer_print_str(p, ", ");
+			p = isl_printer_print_str(p, " (");
+			p = isl_printer_print_ast_expr(p, expr_destination->u.op.args[i]);
+			p = isl_printer_print_str(p, ") ");
+			if(i==surf_dim)
+			{
+				p = isl_printer_print_str(p, " * sizeof(");
+				p = isl_printer_print_str(p, type);
+				p = isl_printer_print_str(p, ")");
+			}
+		}
+		p = isl_printer_print_str(p, ");");
+		return p;
 }
