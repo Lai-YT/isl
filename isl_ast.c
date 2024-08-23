@@ -86,8 +86,8 @@ void isl_ast_expr_modify_access_to_tex_call(__isl_keep isl_ast_expr * ast_expr,b
 	ast_expr->u.op.n_arg = ast_expr->u.op.n_arg + 1;
 	ast_expr->u.op.args = args;
 	free(arg2_char);
-	printf("done constructed texture expr");
-	fflush(stdout);
+	// printf("done constructed texture expr");
+	// fflush(stdout);
 	/*isl_printer * new_var_name;
 		//isl_ctx * ctx;
 		//ctx =  isl_ast_expr_get_ctx(ast_expr);
@@ -1736,7 +1736,7 @@ isl_stat isl_ast_node_foreach_descendant_top_down_analysis(
 		arg = (struct kernel_analysis *) user;
 		if(!arg->is_annotating)
 			arg->kernel_loop_depth_count++;
-		printf("\n LLL Entering Loop");
+		// printf("\n LLL Entering Loop");
 		node = node->u.f.body;
 		isl_stat rtn= isl_ast_node_foreach_descendant_top_down_analysis(node, fn, user);
 		if(!arg->is_annotating)
