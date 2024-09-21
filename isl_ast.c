@@ -65,7 +65,7 @@ void isl_ast_expr_modify_access_to_tex_call(__isl_keep isl_ast_expr * ast_expr,b
 
 	const char  * tmp =isl_id_get_name(ast_expr->u.op.args[0]->u.id);
 	char * prefix="texRef_";
-	char * arg2_char = (char *)malloc(sizeof(char)*(strlen(tmp)+strlen(prefix)));
+	char * arg2_char = (char *)malloc(sizeof(char)*(strlen(tmp)+strlen(prefix) + 1));
 	strcpy(arg2_char,prefix);
 	strcat(arg2_char,tmp);
 
